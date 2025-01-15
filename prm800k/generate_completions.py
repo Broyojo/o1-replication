@@ -3,9 +3,10 @@ import os
 import random
 
 from openai import OpenAI
-from preprocess import load_samples
+from preprocess import load_samples, save_samples
 from tqdm import tqdm
 from transformers import AutoTokenizer
+from vllm import LLM, SamplingParams
 
 
 def format_sample_steps(steps):
@@ -62,7 +63,7 @@ client = OpenAI(
 )
 
 
-def generate_completion_for_sample(
+def generate_completion_for_sample_openai(
     sample, model: str, temperature: float = 0.8, top_p=0.95
 ):
     messages = format_sample_for_output_generation(sample)
@@ -74,6 +75,52 @@ def generate_completion_for_sample(
         top_p=top_p,
     )
     return response.choices[0].message.content
+
+
+def run_vllm_generation(
+    samples: list[dict], model: str, temperature: float = 0.8, top_p=0.95
+):
+    llm = LLM(
+        model=model,
+        gpu_memory_utilization=0.7,
+        enable_prefix_caching=True,
+    )
+    sampling_params = SamplingParams(
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=8192,
+    )
+
+    prompts = []
+    for sample in samples:
+        prompts.append(format_sample_for_output_generation(sample))
+
+    outputs = llm.chat(messages=prompts, sampling_params=sampling_params)
+    completions = []
+    for output in outputs:
+        generated_text = output.outputs[0].text
+        completions.append(generated_text)
+    return completions
+
+
+def run_openai_generation(samples):
+    for sample in tqdm(samples, desc="generating completion"):
+        completion = generate_completion_for_sample_openai(
+            sample, model="deepseek-ai/DeepSeek-V3"
+        )
+        print(completion)
+        assert completion
+
+        with open(f"outputs/output_{len(os.listdir("outputs"))}.txt", "w") as f:
+            f.write(
+                format_fake_template(sample).replace("{assistant output}", completion),
+            )
+
+
+def augment_samples(samples, model):
+    completions = run_vllm_generation(samples, model=model)
+    for sample, completion in zip(samples, completions):
+        sample["output"] = completion
 
 
 def main():
@@ -91,19 +138,11 @@ def main():
     #     estimate_tokens(test, tokenizer, step_to_output_tokens_constant=400),
     # )
 
-    samples = random.sample(train, k=10)
+    augment_samples(train, model="meta-llama/Llama-3.1-8B-Instruct")
+    augment_samples(test, model="meta-llama/Llama-3.1-8B-Instruct")
 
-    for sample in tqdm(samples, desc="generating completion"):
-        completion = generate_completion_for_sample(
-            sample, model="deepseek-ai/DeepSeek-V3"
-        )
-        print(completion)
-        assert completion
-
-        with open(f"outputs/output_{len(os.listdir("outputs"))}.txt", "w") as f:
-            f.write(
-                format_fake_template(sample).replace("{assistant output}", completion),
-            )
+    save_samples("./data/augmented/train.jsonl", train)
+    save_samples("./data/augmented/test.jsonl", test)
 
 
 if __name__ == "__main__":

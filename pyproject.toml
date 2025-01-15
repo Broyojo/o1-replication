@@ -9,4 +9,5 @@ dependencies = [
     "openai>=1.59.7",
     "tqdm>=4.67.1",
     "transformers>=4.48.0",
+    "vllm==0.6.3",
 ]
