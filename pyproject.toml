@@ -5,9 +5,11 @@ description = "replication of o1"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "beautifulsoup4>=4.12.3",
     "matplotlib>=3.10.0",
-    "openai>=1.59.7",
+    "openai>=1.59.8",
     "tqdm>=4.67.1",
     "transformers>=4.48.0",
+    "unsloth>=2025.1.5",
     "vllm==0.6.3",
 ]
