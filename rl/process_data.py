@@ -104,6 +104,7 @@ def check_uniques(example, uniques):
 
 
 def load_numina_math(num_proc=os.cpu_count()):
+    # TODO: some questions seem to have characters like ①③ in them, maybe replace these with actual numbers. may not matter though because they are just used for enumerating lists and they seem to be present in the prompt
     numina_math = (
         load_dataset("AI-MO/NuminaMath-CoT", split="train")
         .filter(  # remove synthetic problems
@@ -241,6 +242,23 @@ def load_omni_math(num_proc=os.cpu_count()):
     return omni_math
 
 
+def load_math500(num_proc=os.cpu_count()):
+    math500 = (
+        load_dataset("json", data_files="./data/raw/MATH/test.jsonl", split="train")
+        .map(  # reformat dataset
+            lambda e: {
+                "problem": e["problem"],
+                "solution": e["solution"],
+                "answer": e["answer"],
+                "source": e["unique_id"],
+            },
+            num_proc=num_proc,  # type: ignore
+        )
+        .remove_columns(["unique_id", "level", "subject"])
+    )
+    return math500
+
+
 def save_samples_to_jsonl(
     dataset, filename="numina_samples.jsonl", num_samples=10, random_seed=None
 ):
@@ -266,9 +284,7 @@ def save_samples_to_jsonl(
 
 def merge_datasets():
     # TODO: maybe do fuzzy string matching to find exact duplicates
-    math500 = load_dataset(
-        "json", data_files="./data/raw/MATH/test.jsonl", split="train"
-    )
+    math500 = load_math500()
 
     numina_math = load_numina_math()
     harp = load_harp()
@@ -301,9 +317,44 @@ def merge_datasets():
     return final_dataset
 
 
+def create_verl_data(num_proc=os.cpu_count()):
+    merged = merge_datasets()
+    math500 = load_math500()
+
+    def process_fn(example, idx, split):
+        data = {
+            "data_source": example["source"],
+            "prompt": [{"role": "user", "content": example.pop("problem")}],
+            "ability": "math",
+            "reward_model": {
+                "style": "rule",
+                "ground_truth": example.pop("answer"),
+            },
+            "extra_info": {"split": split, "index": idx},
+        }
+        return data
+
+    train_ds = merged.map(
+        process_fn,
+        fn_kwargs={"split": "test"},
+        with_indices=True,
+        num_proc=num_proc,
+        remove_columns=merged.column_names,
+    )
+    test_ds = math500.map(
+        process_fn,
+        fn_kwargs={"split": "test"},
+        with_indices=True,
+        num_proc=num_proc,
+        remove_columns=merged.column_names,
+    )
+
+    train_ds.to_parquet("./data/filtered/train.parquet")
+    test_ds.to_parquet("./data/filtered/test.parquet")  # type: ignore
+
+
 def main():
-    ds = merge_datasets().shuffle()
-    save_samples_to_jsonl(ds, num_samples=1000, filename="merged.jsonl")
+    create_verl_data(num_proc=16)
 
 
 if __name__ == "__main__":
