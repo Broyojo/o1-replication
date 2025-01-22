@@ -1,3 +1,10 @@
+"""
+meeting notes:
+- investigate transferrability of reasoning between domains
+- iterative (mix math and other things?)
+- model good at reasoning and non-reasoning tasks
+"""
+
 # script for automated data pipeline
 import json
 import os
@@ -250,7 +257,7 @@ def load_math500(num_proc=os.cpu_count()):
                 "problem": e["problem"],
                 "solution": e["solution"],
                 "answer": e["answer"],
-                "source": e["unique_id"],
+                "source": "math500",
             },
             num_proc=num_proc,  # type: ignore
         )
@@ -324,7 +331,19 @@ def create_verl_data(num_proc=os.cpu_count()):
     def process_fn(example, idx, split):
         data = {
             "data_source": example["source"],
-            "prompt": [{"role": "user", "content": example.pop("problem")}],
+            "prompt": [
+                {
+                    "role": "system",
+                    "content": """A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process is enclosed <think> </think>, i.e., 
+<think>
+[reasoning process here]
+</think>
+[answer here].
+
+Make sure your final answer is in \\boxed{}.""",
+                },
+                {"role": "user", "content": example.pop("problem")},
+            ],
             "ability": "math",
             "reward_model": {
                 "style": "rule",
@@ -340,14 +359,14 @@ def create_verl_data(num_proc=os.cpu_count()):
         with_indices=True,
         num_proc=num_proc,
         remove_columns=merged.column_names,
-    )
+    ).shuffle(seed=42)
     test_ds = math500.map(
         process_fn,
         fn_kwargs={"split": "test"},
         with_indices=True,
         num_proc=num_proc,
         remove_columns=merged.column_names,
-    )
+    ).shuffle(seed=42)
 
     train_ds.to_parquet("./data/filtered/train.parquet")
     test_ds.to_parquet("./data/filtered/test.parquet")  # type: ignore

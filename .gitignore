@@ -11,3 +11,6 @@ wheels/
 xFinder*
 data
 *.jsonl
+outputs
+wandb
+checkpoints
