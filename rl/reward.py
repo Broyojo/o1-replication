@@ -19,6 +19,8 @@ def compute_score(solution_str, ground_truth) -> float:
     2. compute correctness score: is the extracted final answer symbolically equivalent to the groundtruth final answer
     """
 
+    # TODO: maybe print/log the arguments and reward here once in a while to take a look
+
     # gate the correctness by the format
     if not validate_think_format(solution_str):
         return 0.0

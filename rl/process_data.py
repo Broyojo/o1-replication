@@ -3,6 +3,7 @@ meeting notes:
 - investigate transferrability of reasoning between domains
 - iterative (mix math and other things?)
 - model good at reasoning and non-reasoning tasks
+- idea: maybe do RL in a multiagent setting
 """
 
 # script for automated data pipeline

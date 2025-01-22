@@ -10,6 +10,8 @@ POLICY="Qwen/Qwen2.5-7B-Instruct"
 CRITIC="Qwen/Qwen2.5-0.5B-Instruct"
 
 # TODO: optimize params here (for multigpu, larger batch size, quicker learning, etc.); probably do a sweep
+# TODO: implement GRPO trainer into veRL (PPO seems not too efficient)
+# TODO: use runpod 8xH100 SMX instance: ~$10.67/hr
 
 CUDA_VISIBLE_DEVICES=2 PYTHONUNBUFFERED=1 python3 train.py --config-name="ppo_trainer" \
  trainer.n_gpus_per_node=1 \
