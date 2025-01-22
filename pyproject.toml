@@ -17,4 +17,5 @@ dependencies = [
     "wandb>=0.19.4",
     "vllm==0.6.3",
     "flash-attn>=2.7.3",
+    "verl>=0.1",
 ]
