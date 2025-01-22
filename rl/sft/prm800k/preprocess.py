@@ -2,6 +2,7 @@ import json
 import os
 
 import matplotlib.pyplot as plt
+from grading import grader
 from tqdm import tqdm
 
 
@@ -12,6 +13,12 @@ def filter_samples(data, test=False):
             continue
 
         if item["label"]["finish_reason"] != "solution":
+            continue
+
+        if not grader.grade_answer(
+            item["question"]["pre_generated_answer"],
+            item["question"]["ground_truth_answer"],
+        ):
             continue
 
         problems.append(item["question"])
@@ -70,7 +77,7 @@ def plot_step_counts():
 
 
 def main():
-    # filter()
+    filter()
     plot_step_counts()
 
 

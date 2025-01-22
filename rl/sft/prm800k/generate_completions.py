@@ -4,11 +4,44 @@ import random
 
 import matplotlib.pyplot as plt
 import numpy as np
+from grading import grader
 from openai import OpenAI
 from preprocess import load_samples, save_samples
 from tqdm import tqdm
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
+
+
+def extract_boxed_answer(text) -> str | None:
+    def find_matching_brace(s, start):
+        count = 1
+        i = start
+        while i < len(s) and count > 0:
+            if s[i] == "{":
+                count += 1
+            elif s[i] == "}":
+                count -= 1
+            i += 1
+        return i - 1 if count == 0 else -1
+
+    boxed_answers = []
+    i = 0
+    while i < len(text):
+        if text[i : i + 6] == "\\boxed":
+            brace_start = text.find("{", i)
+            if brace_start != -1:
+                brace_end = find_matching_brace(text, brace_start + 1)
+                if brace_end != -1:
+                    answer = text[brace_start + 1 : brace_end]
+                    boxed_answers.append(answer.strip())
+                    i = brace_end
+        i += 1
+
+    # we don't want to deal with questions with more than 1 boxed answer
+    if not boxed_answers or len(boxed_answers) > 1:
+        return None
+
+    return boxed_answers[0]
 
 
 def format_sample_steps(steps):
@@ -27,7 +60,7 @@ def format_fake_template(sample):
 
 
 def format_user_prompt(sample):
-    prompt = f"""The following is a user asking a question to an assistant which thinks internally before providing its solution to the user:\n\n{format_fake_template(sample)}\n\nPlease create an assistant output which summarizes the solution and reasoning process. The user only sees the output from the assistant, not the intermediate thinking process, so make sure that the assistant output is fluent, complete, and doesn't include irrelevant parts from the reasoning process, such as mistakes and their corrections, extensive trial and error, rambling, scratch work, etc. Use the present tense, refrain from using 'I' in the output, and make sure to present a detailed solution to the problem, not a thought-by-thought retelling of the reasoning process. ONLY output the text that should go into the {{assistant output}} section, nothing else."""
+    prompt = f"""The following is a user asking a question to an assistant which thinks internally before providing its solution to the user:\n\n{format_fake_template(sample)}\n\nPlease create an assistant output which summarizes the solution and reasoning process. The user only sees the output from the assistant, not the intermediate thinking process, so make sure that the assistant output is fluent, complete, and doesn't include irrelevant parts from the reasoning process, such as mistakes and their corrections, extensive trial and error, rambling, scratch work, etc. Use the present tense, refrain from using 'I' in the output, and make sure to present a detailed solution to the problem, not a thought-by-thought retelling of the reasoning process. ONLY output the text that should go into the {{assistant output}} section, nothing else. MAKE SURE that the final answer in the summary is in \\boxed{{}}. There is only a single final answer."""
 
     return prompt
 
@@ -77,37 +110,44 @@ def generate_completion_for_sample_openai(
     return response.choices[0].message.content
 
 
-def run_vllm_generation(
-    samples: list[dict],
-    model: str,
-    temperature: float = 0.8,
-    top_p=0.95,
-    max_tokens=8192,
-    gpu_memory_utilization=0.9,
-    max_model_len=8192 + 2048,
-):
-    llm = LLM(
-        model=model,
-        gpu_memory_utilization=gpu_memory_utilization,
+class VLLMInference:
+    def __init__(
+        self,
+        model: str,
+        gpu_memory_utilization=0.9,
         enable_prefix_caching=True,
-        max_model_len=max_model_len,
-    )
-    sampling_params = SamplingParams(
-        temperature=temperature,
-        top_p=top_p,
-        max_tokens=max_tokens,
-    )
+        max_model_len=8192 + 2048,
+    ):
+        self.llm = LLM(
+            model=model,
+            gpu_memory_utilization=gpu_memory_utilization,
+            enable_prefix_caching=enable_prefix_caching,
+            max_model_len=max_model_len,
+        )
 
-    prompts = []
-    for sample in samples:
-        prompts.append(format_sample_for_output_generation(sample))
+    def run_vllm_generate(
+        self,
+        samples: list[dict],
+        temperature: float = 0.8,
+        top_p=0.95,
+        max_tokens=8192,
+    ):
+        sampling_params = SamplingParams(
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+        )
 
-    outputs = llm.chat(messages=prompts, sampling_params=sampling_params)
-    completions = []
-    for output in outputs:
-        generated_text = output.outputs[0].text
-        completions.append(generated_text)
-    return completions
+        prompts = []
+        for sample in samples:
+            prompts.append(format_sample_for_output_generation(sample))
+
+        outputs = self.llm.chat(messages=prompts, sampling_params=sampling_params)
+        completions = []
+        for output in outputs:
+            generated_text = output.outputs[0].text
+            completions.append(generated_text)
+        return completions
 
 
 def run_openai_generation(samples, model="deepseek-ai/DeepSeek-V3", together=True):
@@ -127,10 +167,37 @@ def run_openai_generation(samples, model="deepseek-ai/DeepSeek-V3", together=Tru
             )
 
 
+def mark_unfinished(samples):
+    count = 0
+    for sample in samples:
+        answer = extract_boxed_answer(sample["output"])
+        if answer is None or not grader.grade_answer(
+            answer, sample["ground_truth_answer"]
+        ):
+            sample["unfinished"] = True
+            count += 1
+    return count
+
+
 def augment_samples(samples, model):
-    completions = run_vllm_generation(samples, model=model)
-    for sample, completion in zip(samples, completions):
-        sample["output"] = completion
+    llm = VLLMInference(model=model)
+
+    left_samples = samples
+    done_samples = []
+
+    while len(left_samples) > 0:
+        completions = llm.run_vllm_generate(left_samples)
+        bad_samples = []
+        for sample, completion in zip(left_samples, completions):
+            answer = extract_boxed_answer(completion)
+            if answer and grader.grade_answer(answer, sample["ground_truth_answer"]):
+                sample["output"] = completion
+                done_samples.append(sample)
+            else:
+                print(answer, sample["ground_truth_answer"])
+                bad_samples.append(sample)
+        left_samples = bad_samples
+    return done_samples
 
 
 def compare_augmented_samples(path1, path2, model1, model2):
@@ -201,8 +268,8 @@ def create_mock_train_samples(samples, path="mock.txt", k=10):
 
 
 def main():
-    # train = load_samples("./data/filtered/train.jsonl")
-    # test = load_samples("./data/filtered/test.jsonl")
+    train = load_samples("./data/filtered/train.jsonl")
+    test = load_samples("./data/filtered/test.jsonl")
 
     # tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-V3")
 
@@ -215,13 +282,13 @@ def main():
     #     estimate_tokens(test, tokenizer, step_to_output_tokens_constant=400),
     # )
 
-    # model = "Qwen/Qwen2.5-32B-Instruct"
+    model = "Qwen/Qwen2.5-32B-Instruct"
 
-    # augment_samples(test, model=model)
-    # save_samples("./data/augmented_6/test.jsonl", test)
+    test = augment_samples(test, model=model)
+    save_samples("./data/augmented_8/test.jsonl", test)
 
-    # augment_samples(train, model=model)
-    # save_samples("./data/augmented_6/train.jsonl", train)
+    train = augment_samples(train, model=model)
+    save_samples("./data/augmented_8/train.jsonl", train)
 
     # compare_augmented_samples(
     #     path1="./data/augmented/test.jsonl",
@@ -230,7 +297,7 @@ def main():
     #     model2="Qwen/Qwen2.5-32B-Instruct",
     # )
 
-    create_mock_train_samples(load_samples("./data/augmented_6/train.jsonl"), k=100)
+    # create_mock_train_samples(load_samples("./data/augmented_7/train.jsonl"), k=100)
 
 
 if __name__ == "__main__":

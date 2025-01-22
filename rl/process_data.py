@@ -392,16 +392,12 @@ def create_verl_data(num_proc=os.cpu_count()):
         num_proc=num_proc,
         remove_columns=merged_train.column_names,
     )
-    test_ds = (
-        merged_eval.shuffle(seed=42)
-        .map(
-            process_fn,
-            fn_kwargs={"split": "test"},
-            with_indices=True,
-            num_proc=num_proc,
-            remove_columns=merged_eval.column_names,
-        )
-        .shuffle(seed=42)
+    test_ds = merged_eval.shuffle(seed=42).map(
+        process_fn,
+        fn_kwargs={"split": "test"},
+        with_indices=True,
+        num_proc=num_proc,
+        remove_columns=merged_eval.column_names,
     )
 
     train_ds.to_parquet("./data/filtered/train.parquet")
