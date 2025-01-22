@@ -11,7 +11,7 @@ import os
 import random
 
 import pandas as pd
-from datasets import Dataset, load_dataset
+from datasets import Dataset, Features, Value, load_dataset
 from tqdm import tqdm
 
 """
@@ -266,6 +266,32 @@ def load_math500(num_proc=os.cpu_count()):
     return math500
 
 
+def load_aime2024(num_proc=os.cpu_count()):
+    aime2024 = (
+        load_dataset("sea-snell/aime-2024", split="test")
+        .map(  # reformat dataset
+            lambda e: {
+                "problem": e["question"],
+                "solution": "",
+                "answer": str(e["answer"]),
+                "source": "aime2024",
+            },
+            num_proc=num_proc,  # type: ignore
+            features=Features(  # type: ignore
+                {
+                    "question": Value("string"),
+                    "problem": Value("string"),
+                    "solution": Value("string"),
+                    "answer": Value("string"),
+                    "source": Value("string"),
+                }
+            ),
+        )
+        .remove_columns(["question"])
+    )
+    return aime2024
+
+
 def save_samples_to_jsonl(
     dataset, filename="numina_samples.jsonl", num_samples=10, random_seed=None
 ):
@@ -290,8 +316,9 @@ def save_samples_to_jsonl(
 
 
 def merge_datasets():
-    # TODO: maybe do fuzzy string matching to find exact duplicates
-    math500 = load_math500()
+    # TODO: maybe do fuzzy matching to find duplicates
+    math500 = load_math500(num_proc=16)
+    aime2024 = load_aime2024(num_proc=1)
 
     numina_math = load_numina_math()
     harp = load_harp()
@@ -309,24 +336,34 @@ def merge_datasets():
 
     deduplicated_df = merged_df.drop_duplicates(subset=["problem"], keep="first")
 
-    math500_problems = set(math500.to_pandas()["problem"])  # type: ignore
+    math500_df = math500.to_pandas()  # type: ignore
+    aime2024_df = aime2024.to_pandas()  # type: ignore
+    math500_problems = set(math500_df["problem"])  # type: ignore
+    aime2024_problems = set(aime2024_df["problem"])  # type: ignore
+    eval_problems = math500_problems.union(aime2024_problems)
 
-    final_df = deduplicated_df[~deduplicated_df["problem"].isin(math500_problems)]
+    final_df = deduplicated_df[~deduplicated_df["problem"].isin(eval_problems)]
     final_df = final_df.reset_index(drop=True)
 
+    eval_dfs = [math500_df, aime2024_df]
+    merged_eval_df = pd.concat(eval_dfs, ignore_index=True)  # type: ignore
+
     final_dataset = Dataset.from_pandas(final_df, preserve_index=False)
+    eval_dataset = Dataset.from_pandas(merged_eval_df, preserve_index=False)
 
     print(f"Initial number of examples: {len(merged_df)}")
     print(f"After deduplication: {len(deduplicated_df)}")
-    print(f"After removing MATH500 questions: {len(final_dataset)}")
+    print(f"After removing evaluation questions: {len(final_dataset)}")
     print(f"Total removed: {len(merged_df) - len(final_dataset)}")
+    print(f"Number of MATH500 questions: {len(math500_problems)}")
+    print(f"Number of AIME2024 questions: {len(aime2024_problems)}")
+    print(f"Total evaluation questions: {len(eval_dataset)}")
 
-    return final_dataset
+    return final_dataset, eval_dataset
 
 
 def create_verl_data(num_proc=os.cpu_count()):
-    merged = merge_datasets()
-    math500 = load_math500()
+    merged_train, merged_eval = merge_datasets()
 
     def process_fn(example, idx, split):
         data = {
@@ -334,13 +371,7 @@ def create_verl_data(num_proc=os.cpu_count()):
             "prompt": [
                 {
                     "role": "system",
-                    "content": """A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process is enclosed <think> </think>, i.e., 
-<think>
-[reasoning process here]
-</think>
-[answer here].
-
-Make sure your final answer is in \\boxed{}.""",
+                    "content": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process is enclosed in <think> </think>, i.e., '<think>[reasoning process here]</think>[answer here]'. Make sure your final answer is in \\boxed{}.",
                 },
                 {"role": "user", "content": example.pop("problem")},
             ],
@@ -353,20 +384,24 @@ Make sure your final answer is in \\boxed{}.""",
         }
         return data
 
-    train_ds = merged.map(
+    train_ds = merged_train.shuffle(seed=42).map(
         process_fn,
         fn_kwargs={"split": "test"},
         with_indices=True,
         num_proc=num_proc,
-        remove_columns=merged.column_names,
-    ).shuffle(seed=42)
-    test_ds = math500.map(
-        process_fn,
-        fn_kwargs={"split": "test"},
-        with_indices=True,
-        num_proc=num_proc,
-        remove_columns=merged.column_names,
-    ).shuffle(seed=42)
+        remove_columns=merged_train.column_names,
+    )
+    test_ds = (
+        merged_eval.shuffle(seed=42)
+        .map(
+            process_fn,
+            fn_kwargs={"split": "test"},
+            with_indices=True,
+            num_proc=num_proc,
+            remove_columns=merged_eval.column_names,
+        )
+        .shuffle(seed=42)
+    )
 
     train_ds.to_parquet("./data/filtered/train.parquet")
     test_ds.to_parquet("./data/filtered/test.parquet")  # type: ignore
