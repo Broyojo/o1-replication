@@ -370,10 +370,10 @@ def create_verl_data(num_proc=os.cpu_count()):
         data = {
             "data_source": example["source"],
             "prompt": [
-                {
-                    "role": "system",
-                    "content": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process is enclosed in <think> </think>, i.e., '<think>[reasoning process here]</think>[answer here]'. Make sure your final answer is in \\boxed{}.",
-                },
+                # {
+                #     "role": "system",
+                #     "content": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process is enclosed in <think> </think>, i.e., '<think>[reasoning process here]</think>[answer here]'. Make sure your final answer is in \\boxed{}.",
+                # },
                 {"role": "user", "content": example.pop("problem")},
             ],
             "ability": "math",

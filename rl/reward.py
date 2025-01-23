@@ -14,16 +14,25 @@ def validate_think_format(text):
 
 
 def remove_think_tags(text):
-    return re.sub(r"<think>.*?</think>", "", text)
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
-def compute_score(solution_str, ground_truth) -> float:
+def compute_score(solution_str: str, ground_truth: str) -> float:
     """
     1. compute format score: adhering to '<think>[reasoning]</think>[answer]' format
     2. compute correctness score: is the extracted final answer symbolically equivalent to the groundtruth final answer
     """
 
     # TODO: maybe print/log the arguments and reward here once in a while to take a look
+
+    solution_str = solution_str.split("<|im_start|>assistant\n")[-1].replace(
+        "<|im_end|>", ""
+    )
+
+    # with open("test3.txt", "a+") as f:
+    #     f.write(
+    #         solution_str + "\n" + f"groundtruth: {ground_truth}\n" + "=" * 100 + "\n"
+    #     )
 
     # gate the correctness by the format
     if not validate_think_format(solution_str):
@@ -55,7 +64,9 @@ if __name__ == "__main__":
     result = remove_think_tags(sample)
     print(result)  # Output: "This is the final answer"
 
-    sol = "<think>\nlet me think step by step.\n</think>\nIf the three numbers are in proportion to $2:4:6$, then they should also be in proportion to $1:2:3$. This implies that the three numbers can be expressed as $x$, $2x$, and $3x$. Add these values together to get: \n\\[x+2x+3x=6x=64\\]\nDivide each side by 6 and get that \n\\[x=\\frac{64}{6}=\\frac{32}{3}=10 \\frac{2}{3}\\]\nwhich is $\\boxed{10\\frac{2}{3}}$."
+    sol = "<think>let me think step by step.\nthis is my second step</think>\nIf the three numbers are in proportion to $2:4:6$, then they should also be in proportion to $1:2:3$. This implies that the three numbers can be expressed as $x$, $2x$, and $3x$. Add these values together to get: \n\\[x+2x+3x=6x=64\\]\nDivide each side by 6 and get that \n\\[x=\\frac{64}{6}=\\frac{32}{3}=10 \\frac{2}{3}\\]\nwhich is $\\boxed{10\\frac{2}{3}}$."
 
     print(compute_score(sol, "10\\frac{2}{3}"))
     print(compute_score(sol, "10\\frac{2}{2}"))
+
+    print(remove_think_tags(sol))

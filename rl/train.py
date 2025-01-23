@@ -23,10 +23,7 @@ from verl.utils.reward_score import gsm8k, math
 
 
 def _select_rm_score_fn(ability, data_source):
-    if ability == "math":
-        return reward.compute_score  # use this for all math questions for now
-    else:
-        raise NotImplementedError(f"unknown ability: {ability}")
+    return reward.compute_score  # just default to this for now
 
 
 class RewardManager:
