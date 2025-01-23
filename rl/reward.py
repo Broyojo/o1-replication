@@ -5,8 +5,12 @@ from process_data import extract_boxed_answer
 
 
 def validate_think_format(text):
-    pattern = r"^<think>.*?</think>.+$"
-    return bool(re.match(pattern, text, re.DOTALL))
+    first_check = bool(re.match(r"^<think>.*</think>.+$", text, re.DOTALL))
+
+    open_tags = len(re.findall(r"<think>", text))
+    close_tags = len(re.findall(r"</think>", text))
+
+    return first_check and open_tags == 1 and close_tags == 1
 
 
 def remove_think_tags(text):
@@ -39,11 +43,13 @@ if __name__ == "__main__":
     invalid1 = "no think tags at all"
     invalid2 = "<think>only think tags</think>"
     invalid3 = "text before <think>reasoning</think>answer"
+    invalid4 = "<think>reasoning</think>answer<think>reasoning</think>answer"
 
     print(valid, validate_think_format(valid))  # True
     print(invalid1, validate_think_format(invalid1))  # False
     print(invalid2, validate_think_format(invalid2))  # False
     print(invalid3, validate_think_format(invalid3))  # False
+    print(invalid4, validate_think_format(invalid4))  # False
 
     sample = "<think>This is my reasoning process</think>This is the final answer"
     result = remove_think_tags(sample)

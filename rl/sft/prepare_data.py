@@ -5,10 +5,10 @@ from datasets import load_dataset
 
 def convert_prm800k_augmented(num_proc=os.cpu_count()):
     train = load_dataset(
-        "json", data_files="./prm800k/data/augmented_6/train.jsonl", split="train"
+        "json", data_files="./prm800k/data/augmented_8/train.jsonl", split="train"
     )
     test = load_dataset(
-        "json", data_files="./prm800k/data/augmented_6/test.jsonl", split="train"
+        "json", data_files="./prm800k/data/augmented_8/test.jsonl", split="train"
     )
 
     def process_fn(example):
