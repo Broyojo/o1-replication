@@ -5,9 +5,9 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export WANDB_API_KEY="121d8f0d656e06f7ebd1c51e71e4dbcdb654af8e"
 
 PROJECT_NAME="o1-replication"
-EXPERIMENT_NAME="qwen2.5-1.5-sft-PPO-test-run-1" 
-POLICY="./checkpoints/global_step_101"
-CRITIC="./checkpoints/global_step_101"
+EXPERIMENT_NAME="qwen2.5-1.5-sft-PPO-test-run-1-continued" 
+POLICY="./checkpoints/o1-replication/qwen2.5-1.5-sft-PPO-test-run-1/actor/global_step_50"
+CRITIC="./checkpoints/o1-replication/qwen2.5-1.5-sft-PPO-test-run-1/actor/global_step_50"
 
 # TODO: optimize params here (for multigpu, larger batch size, quicker learning, etc.); probably do a sweep
 # TODO: implement GRPO trainer into veRL (PPO seems not too efficient)
@@ -33,6 +33,7 @@ CUDA_VISIBLE_DEVICES=3 PYTHONUNBUFFERED=1 python3 train.py --config-name="ppo_tr
  actor_rollout_ref.rollout.log_prob_micro_batch_size=128 \
  actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
  actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
+ actor_rollout_ref.rollout.n=1 \
  actor_rollout_ref.ref.log_prob_micro_batch_size=128 \
  actor_rollout_ref.ref.fsdp_config.param_offload=True \
  critic.optim.lr=1e-5 \

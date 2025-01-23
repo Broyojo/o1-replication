@@ -19,3 +19,8 @@ dependencies = [
     "flash-attn>=2.7.3",
     "verl>=0.1",
 ]
+
+[dependency-groups]
+dev = [
+    "py-spy>=0.4.0",
+]
